@@ -24,35 +24,42 @@ class SumFilter:
                 MOM_HOST, AGGREGATION_PREFIX, [f"{AGGREGATION_PREFIX}_{i}"]
             )
             self.data_output_exchanges.append(data_output_exchange)
-        self.amount_by_fruit = {}
+        self.amount_by_client = {}
 
-    def _process_data(self, fruit, amount):
-        logging.info(f"Process data")
-        self.amount_by_fruit[fruit] = self.amount_by_fruit.get(
+    def _process_data(self, client_id, fruit, amount):
+        logging.info(f"Process data for client {client_id}")
+        amount_by_fruit = self.amount_by_client.setdefault(client_id, {})
+        amount_by_fruit[fruit] = amount_by_fruit.get(
             fruit, fruit_item.FruitItem(fruit, 0)
         ) + fruit_item.FruitItem(fruit, int(amount))
 
-    def _process_eof(self):
+    def _process_eof(self, client_id):
         logging.info(f"Broadcasting data messages")
-        for final_fruit_item in self.amount_by_fruit.values():
+        for final_fruit_item in self.amount_by_client.get(client_id, {}).values():
+            data_msg = message_protocol.internal.DataMessage(client_id, final_fruit_item.fruit, final_fruit_item.amount)
             for data_output_exchange in self.data_output_exchanges:
                 data_output_exchange.send(
-                    message_protocol.internal.serialize(
-                        [final_fruit_item.fruit, final_fruit_item.amount]
-                    )
+                    message_protocol.internal.serialize(data_msg.to_dict())
                 )
 
         logging.info(f"Broadcasting EOF message")
+        eof_msg = message_protocol.internal.EOFMessage(client_id)
         for data_output_exchange in self.data_output_exchanges:
-            data_output_exchange.send(message_protocol.internal.serialize([]))
+            data_output_exchange.send(message_protocol.internal.serialize(eof_msg.to_dict()))
+        
+        self.amount_by_client.pop(client_id, None)
 
 
     def process_data_messsage(self, message, ack, nack):
         fields = message_protocol.internal.deserialize(message)
-        if len(fields) == 2:
-            self._process_data(*fields)
+        msg = message_protocol.internal.parse_message(fields)
+
+        if msg.message_type == message_protocol.internal.InternalMessageType.DATA:
+            self._process_data(msg.client_id, msg.fruit, msg.amount)
+        elif msg.message_type == message_protocol.internal.InternalMessageType.EOF:
+            self._process_eof(msg.client_id)
         else:
-            self._process_eof(*fields)
+            logging.error(f"Unknown message type: {msg.message_type}")
         ack()
 
     def start(self):
