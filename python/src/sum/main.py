@@ -1,6 +1,7 @@
 import os
 import logging
 import threading
+import hashlib
 
 from common import middleware, message_protocol, fruit_item
 
@@ -26,6 +27,10 @@ class SumFilter:
             self.data_output_exchanges.append(data_output_exchange)
         self.amount_by_client = {}
 
+    def _get_aggregation_id(self, fruit):
+        digest = hashlib.md5(fruit.encode("utf-8")).digest()
+        return int.from_bytes(digest, "big") % AGGREGATION_AMOUNT
+
     def _process_data(self, client_id, fruit, amount):
         logging.info(f"Process data for client {client_id}")
         amount_by_fruit = self.amount_by_client.setdefault(client_id, {})
@@ -34,13 +39,13 @@ class SumFilter:
         ) + fruit_item.FruitItem(fruit, int(amount))
 
     def _process_eof(self, client_id):
-        logging.info(f"Broadcasting data messages")
+        logging.info(f"Sending partitioned data messages")
         for final_fruit_item in self.amount_by_client.get(client_id, {}).values():
             data_msg = message_protocol.internal.DataMessage(client_id, final_fruit_item.fruit, final_fruit_item.amount)
-            for data_output_exchange in self.data_output_exchanges:
-                data_output_exchange.send(
-                    message_protocol.internal.serialize(data_msg.to_dict())
-                )
+            aggregation_id = self._get_aggregation_id(final_fruit_item.fruit)
+            self.data_output_exchanges[aggregation_id].send(
+                message_protocol.internal.serialize(data_msg.to_dict())
+            )
 
         logging.info(f"Broadcasting EOF message")
         eof_msg = message_protocol.internal.EOFMessage(client_id)
