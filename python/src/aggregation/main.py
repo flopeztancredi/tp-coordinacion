@@ -27,7 +27,6 @@ class AggregationFilter:
         self.eof_counts = {}
 
     def start(self):
-        signal.signal(signal.SIGTERM, self._handle_sigterm)
         self.input_exchange.start_consuming(self.process_messsage)
 
     def _handle_sigterm(self, *_):
@@ -118,6 +117,7 @@ class AggregationFilter:
 def main():
     logging.basicConfig(level=logging.INFO)
     aggregation_filter = AggregationFilter()
+    signal.signal(signal.SIGTERM, aggregation_filter._handle_sigterm)
 
     try:
         aggregation_filter.start()

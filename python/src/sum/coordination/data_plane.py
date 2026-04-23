@@ -19,12 +19,12 @@ class SumDataPlane:
     def stop(self):
         if self._stopped:
             return
+        self._stopped = True
 
         try:
             self._input_queue.stop_consuming()
         except Exception:
             logging.exception("Failed to stop sum data consumer")
-        self._stopped = True
 
     def close(self):
         if self._closed:

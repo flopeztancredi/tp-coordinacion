@@ -38,6 +38,7 @@ class SumControlPlane:
     def stop(self):
         if self._stopped:
             return
+        self._stopped = True
 
         if self._control_input_exchange is None:
             return
@@ -46,7 +47,6 @@ class SumControlPlane:
             self._control_input_exchange.stop_consuming()
         except Exception:
             logging.exception("Failed to stop sum control consumer")
-        self._stopped = True
 
     def close(self):
         if self._closed:

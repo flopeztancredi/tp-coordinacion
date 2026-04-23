@@ -23,7 +23,6 @@ class JoinFilter:
         self.result_counts = {}
 
     def start(self):
-        signal.signal(signal.SIGTERM, self._handle_sigterm)
         self.input_queue.start_consuming(self.process_messsage)
 
     def _handle_sigterm(self, *_):
@@ -106,6 +105,7 @@ class JoinFilter:
 def main():
     logging.basicConfig(level=logging.INFO)
     join_filter = JoinFilter()
+    signal.signal(signal.SIGTERM, join_filter._handle_sigterm)
 
     try:
         join_filter.start()

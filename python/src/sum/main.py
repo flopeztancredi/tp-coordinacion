@@ -28,7 +28,7 @@ class SumService:
             self._run_data_plane()
         finally:
             self._control_plane.stop()
-            self._control_thread.join(timeout=5)
+            self._control_thread.join()
 
     def stop(self):
         self._data_plane.stop()
