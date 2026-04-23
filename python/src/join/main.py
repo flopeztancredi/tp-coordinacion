@@ -23,7 +23,7 @@ class JoinFilter:
         self.result_counts = {}
 
     def start(self):
-        self.input_queue.start_consuming(self.process_messsage)
+        self.input_queue.start_consuming(self.process_message)
 
     def _handle_sigterm(self, *_):
         logging.info("SIGTERM received, shutting down join gracefully")
@@ -54,7 +54,7 @@ class JoinFilter:
         except Exception:
             logging.exception("Failed to close join output queue")
 
-    def process_messsage(self, message, ack, nack):
+    def process_message(self, message, ack, nack):
         try:
             msg = self._parse_message(message)
             self._handle_message(msg)

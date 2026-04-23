@@ -27,7 +27,7 @@ class AggregationFilter:
         self.eof_counts = {}
 
     def start(self):
-        self.input_exchange.start_consuming(self.process_messsage)
+        self.input_exchange.start_consuming(self.process_message)
 
     def _handle_sigterm(self, *_):
         logging.info("SIGTERM received, shutting down aggregation gracefully")
@@ -58,7 +58,7 @@ class AggregationFilter:
         except Exception:
             logging.exception("Failed to close aggregation output queue")
 
-    def process_messsage(self, message, ack, nack):
+    def process_message(self, message, ack, nack):
         try:
             msg = self._parse_message(message)
             self._handle_message(msg)
