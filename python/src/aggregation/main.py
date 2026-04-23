@@ -1,8 +1,6 @@
 import os
 import logging
 import signal
-import bisect
-
 from common import middleware, message_protocol, fruit_item
 
 
@@ -81,13 +79,9 @@ class AggregationFilter:
 
     def _process_data(self, client_id, fruit, amount):
         logging.info("Processing data message")
-        partials = self.partials_by_client.setdefault(client_id, [])
-
-        for i in range(len(partials)):
-            if partials[i].fruit == fruit:
-                partials[i] = partials[i] + fruit_item.FruitItem(fruit, amount)
-                return
-        bisect.insort(partials, fruit_item.FruitItem(fruit, amount))
+        partials = self.partials_by_client.setdefault(client_id, {})
+        current = partials.get(fruit, fruit_item.FruitItem(fruit, 0))
+        partials[fruit] = current + fruit_item.FruitItem(fruit, amount)
 
     def _process_eof(self, client_id):
         self.eof_counts[client_id] = self.eof_counts.get(client_id, 0) + 1
@@ -97,8 +91,8 @@ class AggregationFilter:
         if eof_count < SUM_AMOUNT:
             return
 
-        partials = self.partials_by_client.get(client_id, [])
-        top = self._calculate_top(partials)
+        partials = self.partials_by_client.get(client_id, {})
+        top = self._calculate_top(partials.values())
         self._send_result(client_id, top)
         self.partials_by_client.pop(client_id, None)
         self.eof_counts.pop(client_id, None)
@@ -109,9 +103,8 @@ class AggregationFilter:
         self.output_queue.send(serialized_result)
 
     def _calculate_top(self, fruit_items):
-        top_items = list(fruit_items[-TOP_SIZE:])
-        top_items.reverse()
-        return [(item.fruit, item.amount) for item in top_items]
+        sorted_items = sorted(fruit_items, reverse=True)
+        return [(item.fruit, item.amount) for item in sorted_items[:TOP_SIZE]]
 
 
 def main():
