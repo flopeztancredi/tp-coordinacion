@@ -1,71 +1,21 @@
-from dataclasses import dataclass
-from enum import Enum
-from typing import ClassVar
-
-
-class InternalMessageType(str, Enum):
-    DATA = "data"
-    EOF = "eof"
-    RESULT = "result"
-
-
-@dataclass
-class InternalMessage:
-    message_type: ClassVar[InternalMessageType]
-
-    def to_dict(self):
-        raise NotImplementedError
-
-
-@dataclass
-class DataMessage(InternalMessage):
-    message_type: ClassVar[InternalMessageType] = InternalMessageType.DATA
-
-    client_id: str
-    fruit: str
-    amount: int
-
-    def to_dict(self):
-        return {
-            "type": self.message_type,
-            "client_id": self.client_id,
-            "fruit": self.fruit,
-            "amount": self.amount,
-        }
-
-
-@dataclass
-class EOFMessage(InternalMessage):
-    message_type: ClassVar[InternalMessageType] = InternalMessageType.EOF
-
-    client_id: str
-
-    def to_dict(self):
-        return {
-            "type": self.message_type,
-            "client_id": self.client_id,
-        }
-
-
-@dataclass
-class ResultMessage(InternalMessage):
-    message_type: ClassVar[InternalMessageType] = InternalMessageType.RESULT
-
-    client_id: str
-    fruit_top: list[tuple[str, int]]
-
-    def to_dict(self):
-        return {
-            "type": self.message_type,
-            "client_id": self.client_id,
-            "fruit_top": self.fruit_top,
-        }
+from .messages import (
+    DataMessage,
+    EOFMessage,
+    InternalMessageType,
+    ResultMessage,
+    SumCountUpdateMessage,
+    SumEOFNoticeMessage,
+    SumFlushMessage,
+)
 
 
 MESSAGE_TYPES = {
     DataMessage.message_type: DataMessage,
     EOFMessage.message_type: EOFMessage,
     ResultMessage.message_type: ResultMessage,
+    SumEOFNoticeMessage.message_type: SumEOFNoticeMessage,
+    SumCountUpdateMessage.message_type: SumCountUpdateMessage,
+    SumFlushMessage.message_type: SumFlushMessage,
 }
 
 
@@ -97,6 +47,27 @@ def parse_message(payload):
         if message_class is EOFMessage:
             return EOFMessage(
                 client_id=payload["client_id"],
+                total_records=payload["total_records"],
+            )
+
+        if message_class is SumEOFNoticeMessage:
+            return SumEOFNoticeMessage(
+                client_id=payload["client_id"],
+                total_records=payload["total_records"],
+                coordinator_id=payload["coordinator_id"],
+            )
+
+        if message_class is SumCountUpdateMessage:
+            return SumCountUpdateMessage(
+                client_id=payload["client_id"],
+                sum_id=payload["sum_id"],
+                processed_count=payload["processed_count"],
+            )
+
+        if message_class is SumFlushMessage:
+            return SumFlushMessage(
+                client_id=payload["client_id"],
+                total_records=payload["total_records"],
             )
 
         return ResultMessage(

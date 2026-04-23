@@ -1,0 +1,11 @@
+import os
+
+
+ID = int(os.environ["ID"])
+MOM_HOST = os.environ["MOM_HOST"]
+INPUT_QUEUE = os.environ["INPUT_QUEUE"]
+SUM_AMOUNT = int(os.environ["SUM_AMOUNT"])
+SUM_PREFIX = os.environ["SUM_PREFIX"]
+SUM_CONTROL_EXCHANGE = "SUM_CONTROL_EXCHANGE"
+AGGREGATION_AMOUNT = int(os.environ["AGGREGATION_AMOUNT"])
+AGGREGATION_PREFIX = os.environ["AGGREGATION_PREFIX"]

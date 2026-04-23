@@ -1,79 +1,33 @@
-import os
 import logging
 import threading
-import hashlib
 
-from common import middleware, message_protocol, fruit_item
+import config
+from coordination.control_plane import SumControlPlane
+from coordination.data_plane import SumDataPlane
+from coordination.state import SumState
 
-ID = int(os.environ["ID"])
-MOM_HOST = os.environ["MOM_HOST"]
-INPUT_QUEUE = os.environ["INPUT_QUEUE"]
-SUM_AMOUNT = int(os.environ["SUM_AMOUNT"])
-SUM_PREFIX = os.environ["SUM_PREFIX"]
-SUM_CONTROL_EXCHANGE = "SUM_CONTROL_EXCHANGE"
-AGGREGATION_AMOUNT = int(os.environ["AGGREGATION_AMOUNT"])
-AGGREGATION_PREFIX = os.environ["AGGREGATION_PREFIX"]
 
-class SumFilter:
+class SumService:
     def __init__(self):
-        self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(
-            MOM_HOST, INPUT_QUEUE
-        )
-        self.data_output_exchanges = []
-        for i in range(AGGREGATION_AMOUNT):
-            data_output_exchange = middleware.MessageMiddlewareExchangeRabbitMQ(
-                MOM_HOST, AGGREGATION_PREFIX, [f"{AGGREGATION_PREFIX}_{i}"]
-            )
-            self.data_output_exchanges.append(data_output_exchange)
-        self.amount_by_client = {}
-
-    def _get_aggregation_id(self, fruit):
-        digest = hashlib.md5(fruit.encode("utf-8")).digest()
-        return int.from_bytes(digest, "big") % AGGREGATION_AMOUNT
-
-    def _process_data(self, client_id, fruit, amount):
-        logging.info(f"Process data for client {client_id}")
-        amount_by_fruit = self.amount_by_client.setdefault(client_id, {})
-        amount_by_fruit[fruit] = amount_by_fruit.get(
-            fruit, fruit_item.FruitItem(fruit, 0)
-        ) + fruit_item.FruitItem(fruit, int(amount))
-
-    def _process_eof(self, client_id):
-        logging.info(f"Sending partitioned data messages")
-        for final_fruit_item in self.amount_by_client.get(client_id, {}).values():
-            data_msg = message_protocol.internal.DataMessage(client_id, final_fruit_item.fruit, final_fruit_item.amount)
-            aggregation_id = self._get_aggregation_id(final_fruit_item.fruit)
-            self.data_output_exchanges[aggregation_id].send(
-                message_protocol.internal.serialize(data_msg.to_dict())
-            )
-
-        logging.info(f"Broadcasting EOF message")
-        eof_msg = message_protocol.internal.EOFMessage(client_id)
-        for data_output_exchange in self.data_output_exchanges:
-            data_output_exchange.send(message_protocol.internal.serialize(eof_msg.to_dict()))
-        
-        self.amount_by_client.pop(client_id, None)
-
-
-    def process_data_messsage(self, message, ack, nack):
-        fields = message_protocol.internal.deserialize(message)
-        msg = message_protocol.internal.parse_message(fields)
-
-        if msg.message_type == message_protocol.internal.InternalMessageType.DATA:
-            self._process_data(msg.client_id, msg.fruit, msg.amount)
-        elif msg.message_type == message_protocol.internal.InternalMessageType.EOF:
-            self._process_eof(msg.client_id)
-        else:
-            logging.error(f"Unknown message type: {msg.message_type}")
-        ack()
+        self._state = SumState()
+        self._control_plane = SumControlPlane(self._state)
+        self._data_plane = SumDataPlane(self._state)
 
     def start(self):
-        self.input_queue.start_consuming(self.process_data_messsage)
+        control_thread = threading.Thread(
+            target=self._control_plane.start,
+            name=f"sum-{config.ID}-control-plane",
+            daemon=True,
+        )
+        control_thread.start()
+        self._control_plane.wait_until_ready()
+        self._data_plane.start()
+
 
 def main():
     logging.basicConfig(level=logging.INFO)
-    sum_filter = SumFilter()
-    sum_filter.start()
+    sum_service = SumService()
+    sum_service.start()
     return 0
 
 

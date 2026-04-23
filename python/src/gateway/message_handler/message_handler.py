@@ -8,14 +8,19 @@ class MessageHandler:
 
     def __init__(self):
         self._client_id = str(uuid.uuid4())
+        self._records_sent = 0
     
     def serialize_data_message(self, message):
         [fruit, amount] = message
+        self._records_sent += 1
         data_msg = message_protocol.internal.DataMessage(self._client_id, fruit, amount)
         return message_protocol.internal.serialize(data_msg.to_dict())
 
     def serialize_eof_message(self, message):
-        eof_msg = message_protocol.internal.EOFMessage(self._client_id)
+        eof_msg = message_protocol.internal.EOFMessage(
+            self._client_id,
+            total_records=self._records_sent,
+        )
         return message_protocol.internal.serialize(eof_msg.to_dict())
 
     def deserialize_result_message(self, message):
