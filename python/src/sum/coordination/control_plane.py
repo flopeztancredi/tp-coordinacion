@@ -12,14 +12,19 @@ class SumControlPlane:
         self._state = state
         self._ready = threading.Event()
         self._startup_error = None
+        self._stopped = False
+        self._closed = False
+        self._control_publisher = None
+        self._aggregation_publisher = None
+        self._control_input_exchange = None
 
     def start(self):
         try:
             self._control_publisher = ControlPublisher()
             self._aggregation_publisher = AggregationPublisher()
-            control_input_exchange = middleware.MessageMiddlewareExchangeRabbitMQ(config.MOM_HOST, config.SUM_CONTROL_EXCHANGE, [topology.sum_routing_key(config.ID)])
+            self._control_input_exchange = middleware.MessageMiddlewareExchangeRabbitMQ(config.MOM_HOST, config.SUM_CONTROL_EXCHANGE, [topology.sum_routing_key(config.ID)])
             self._ready.set()
-            control_input_exchange.start_consuming(self.process_message)
+            self._control_input_exchange.start_consuming(self.process_message)
         except Exception as exc:
             self._startup_error = exc
             self._ready.set()
@@ -29,6 +34,42 @@ class SumControlPlane:
         self._ready.wait()
         if self._startup_error is not None:
             raise self._startup_error
+
+    def stop(self):
+        if self._stopped:
+            return
+
+        if self._control_input_exchange is None:
+            return
+
+        try:
+            self._control_input_exchange.stop_consuming()
+        except Exception:
+            logging.exception("Failed to stop sum control consumer")
+        self._stopped = True
+
+    def close(self):
+        if self._closed:
+            return
+
+        self._closed = True
+        if self._control_input_exchange is not None:
+            try:
+                self._control_input_exchange.close()
+            except Exception:
+                logging.exception("Failed to close sum control input exchange")
+
+        if self._control_publisher is not None:
+            try:
+                self._control_publisher.close()
+            except Exception:
+                logging.exception("Failed to close sum control publisher")
+
+        if self._aggregation_publisher is not None:
+            try:
+                self._aggregation_publisher.close()
+            except Exception:
+                logging.exception("Failed to close sum aggregation publisher")
 
     def process_message(self, message, ack, nack):
         try:
@@ -58,17 +99,20 @@ class SumControlPlane:
         self._send_count_update(client_id, coordinator_id, processed_count)
 
     def _handle_count_update(self, client_id, sender_sum_id, processed_count):
+        assert self._control_publisher is not None
         total_records_to_flush = self._state.add_worker_count(client_id, sender_sum_id, processed_count)
         if total_records_to_flush is not None:
             flush_msg = message_protocol.internal.SumFlushMessage(client_id, total_records_to_flush)
             self._control_publisher.broadcast(flush_msg)
 
     def _handle_flush(self, client_id, total_records):
+        assert self._aggregation_publisher is not None
         fruit_items = self._state.take_flush_items(client_id)
         logging.info("Flushing local sum state for client %s", client_id)
         self._aggregation_publisher.send_partials(client_id, fruit_items)
         self._aggregation_publisher.send_eofs(client_id, total_records)
 
     def _send_count_update(self, client_id, coordinator_id, processed_count):
+        assert self._control_publisher is not None
         count_update = message_protocol.internal.SumCountUpdateMessage(client_id=client_id, sum_id=config.ID, processed_count=processed_count)
         self._control_publisher.send(coordinator_id, count_update)

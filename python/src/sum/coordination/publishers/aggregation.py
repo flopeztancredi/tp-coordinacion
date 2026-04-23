@@ -19,3 +19,6 @@ class AggregationPublisher:
         eof_msg = message_protocol.internal.EOFMessage(client_id, total_records)
         serialized_eof = message_protocol.internal.serialize(eof_msg.to_dict())
         self._exchange.send(serialized_eof)
+
+    def close(self):
+        self._exchange.close()

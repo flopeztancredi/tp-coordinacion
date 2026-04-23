@@ -29,7 +29,7 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
 
     def stop_consuming(self):
         try:
-            self._channel.stop_consuming()
+            self._connection.add_callback_threadsafe(self._channel.stop_consuming)
         except AMQPConnectionError as e:
             raise MessageMiddlewareDisconnectedError() from e
 
@@ -93,7 +93,7 @@ class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
 
     def stop_consuming(self):
         try:
-            self._channel.stop_consuming()
+            self._connection.add_callback_threadsafe(self._channel.stop_consuming)
         except AMQPConnectionError as e:
             raise MessageMiddlewareDisconnectedError() from e
 

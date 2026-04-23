@@ -14,3 +14,6 @@ class ControlPublisher:
     def send(self, sum_id, message):
         serialized_msg = message_protocol.internal.serialize(message.to_dict())
         self._exchange.send_to(serialized_msg, topology.sum_routing_key(sum_id))
+
+    def close(self):
+        self._exchange.close()

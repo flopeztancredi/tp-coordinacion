@@ -8,11 +8,38 @@ from coordination.publishers import ControlPublisher
 class SumDataPlane:
     def __init__(self, state):
         self._state = state
+        self._stopped = False
+        self._closed = False
         self._input_queue = middleware.MessageMiddlewareQueueRabbitMQ(config.MOM_HOST, config.INPUT_QUEUE)
         self._control_publisher = ControlPublisher()
 
     def start(self):
         self._input_queue.start_consuming(self.process_message)
+
+    def stop(self):
+        if self._stopped:
+            return
+
+        try:
+            self._input_queue.stop_consuming()
+        except Exception:
+            logging.exception("Failed to stop sum data consumer")
+        self._stopped = True
+
+    def close(self):
+        if self._closed:
+            return
+
+        self._closed = True
+        try:
+            self._input_queue.close()
+        except Exception:
+            logging.exception("Failed to close sum data input queue")
+
+        try:
+            self._control_publisher.close()
+        except Exception:
+            logging.exception("Failed to close sum data control publisher")
 
     def process_message(self, message, ack, nack):
         try:

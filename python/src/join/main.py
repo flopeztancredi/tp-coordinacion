@@ -1,5 +1,6 @@
 import os
 import logging
+import signal
 import heapq
 
 from common import middleware, message_protocol
@@ -14,13 +15,45 @@ TOP_SIZE = int(os.environ["TOP_SIZE"])
 class JoinFilter:
 
     def __init__(self):
+        self._stopped = False
+        self._closed = False
         self.input_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, INPUT_QUEUE)
         self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
         self.partial_tops_by_client = {}
         self.result_counts = {}
 
     def start(self):
+        signal.signal(signal.SIGTERM, self._handle_sigterm)
         self.input_queue.start_consuming(self.process_messsage)
+
+    def _handle_sigterm(self, *_):
+        logging.info("SIGTERM received, shutting down join gracefully")
+        self.stop()
+
+    def stop(self):
+        if self._stopped:
+            return
+
+        try:
+            self.input_queue.stop_consuming()
+        except Exception:
+            logging.exception("Failed to stop join consumer")
+        self._stopped = True
+
+    def close(self):
+        if self._closed:
+            return
+
+        self._closed = True
+        try:
+            self.input_queue.close()
+        except Exception:
+            logging.exception("Failed to close join input queue")
+
+        try:
+            self.output_queue.close()
+        except Exception:
+            logging.exception("Failed to close join output queue")
 
     def process_messsage(self, message, ack, nack):
         try:
@@ -73,7 +106,16 @@ class JoinFilter:
 def main():
     logging.basicConfig(level=logging.INFO)
     join_filter = JoinFilter()
-    join_filter.start()
+
+    try:
+        join_filter.start()
+    except Exception:
+        logging.exception("Join error")
+    finally:
+        join_filter.stop()
+        join_filter.close()
+        logging.info("Join filter shut down")
+
     return 0
 
 

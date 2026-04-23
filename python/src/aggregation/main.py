@@ -1,8 +1,10 @@
 import os
 import logging
+import signal
 import bisect
 
 from common import middleware, message_protocol, fruit_item
+
 
 ID = int(os.environ["ID"])
 MOM_HOST = os.environ["MOM_HOST"]
@@ -17,13 +19,45 @@ TOP_SIZE = int(os.environ["TOP_SIZE"])
 class AggregationFilter:
 
     def __init__(self):
+        self._stopped = False
+        self._closed = False
         self.input_exchange = middleware.MessageMiddlewareExchangeRabbitMQ(MOM_HOST, AGGREGATION_PREFIX, [f"{AGGREGATION_PREFIX}_{ID}"])
         self.output_queue = middleware.MessageMiddlewareQueueRabbitMQ(MOM_HOST, OUTPUT_QUEUE)
         self.partials_by_client = {}
         self.eof_counts = {}
 
     def start(self):
+        signal.signal(signal.SIGTERM, self._handle_sigterm)
         self.input_exchange.start_consuming(self.process_messsage)
+
+    def _handle_sigterm(self, *_):
+        logging.info("SIGTERM received, shutting down aggregation gracefully")
+        self.stop()
+
+    def stop(self):
+        if self._stopped:
+            return
+
+        try:
+            self.input_exchange.stop_consuming()
+        except Exception:
+            logging.exception("Failed to stop aggregation consumer")
+        self._stopped = True
+
+    def close(self):
+        if self._closed:
+            return
+
+        self._closed = True
+        try:
+            self.input_exchange.close()
+        except Exception:
+            logging.exception("Failed to close aggregation input exchange")
+
+        try:
+            self.output_queue.close()
+        except Exception:
+            logging.exception("Failed to close aggregation output queue")
 
     def process_messsage(self, message, ack, nack):
         try:
@@ -84,7 +118,16 @@ class AggregationFilter:
 def main():
     logging.basicConfig(level=logging.INFO)
     aggregation_filter = AggregationFilter()
-    aggregation_filter.start()
+
+    try:
+        aggregation_filter.start()
+    except Exception:
+        logging.exception("Aggregation error")
+    finally:
+        aggregation_filter.stop()
+        aggregation_filter.close()
+        logging.info("Aggregation filter shut down")
+
     return 0
 
 
