@@ -20,7 +20,6 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
             on_message_callback(body, ack, nack)
 
         try:
-            self._channel.basic_qos(prefetch_count=1)
             self._channel.basic_consume(queue=self._queue_name, on_message_callback=_callback)
             self._channel.start_consuming()
         except AMQPConnectionError as e:
@@ -54,7 +53,7 @@ class MessageMiddlewareQueueRabbitMQ(MessageMiddlewareQueue):
             raise MessageMiddlewareCloseError() from e
 
 class MessageMiddlewareExchangeRabbitMQ(MessageMiddlewareExchange):
-    
+
     def __init__(self, host, exchange_name, routing_keys):
         try:
             self._connection = pika.BlockingConnection(pika.ConnectionParameters(host))
